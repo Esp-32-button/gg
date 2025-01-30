@@ -33,15 +33,23 @@ app.get("/test-db", async (req, res) => {
     }
 });
 // User Registration
-app.post("/register", async (req, res) => {
-  const { username, email, password } = req.body;
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query("INSERT INTO users (username, email, password) VALUES ($1, $2, $3)", [username, email, hashedPassword]);
-    res.json({ message: "User registered successfully!" });
-  } catch (error) {
-    res.status(500).json({ error: "Error registering user" });
-  }
+app.post('/register', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: "Email and password are required." });
+        }
+
+        // Hash password and insert into Neon database
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const result = await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [email, hashedPassword]);
+
+        res.json({ message: "User registered successfully!" });
+    } catch (error) {
+        console.error("Register Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
 });
 
 // User Login
