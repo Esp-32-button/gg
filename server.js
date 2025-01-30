@@ -21,6 +21,15 @@ pool.connect()
 app.use(cors());
 app.use(express.json()); // Parse JSON requests
 
+app.get("/test-db", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM users"); // Change "users" to your actual table name
+        res.json(result.rows);
+    } catch (err) {
+        console.error("❌ Database Query Error:", err);
+        res.status(500).json({ error: "Database error" });
+    }
+});
 // User Registration
 app.post("/register", async (req, res) => {
   const { username, email, password } = req.body;
