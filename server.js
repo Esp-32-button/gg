@@ -21,6 +21,8 @@ pool.connect()
 app.use(cors());
 app.use(express.json()); // Parse JSON requests
 
+app.use(cors({ origin: "*" })); // Allow all origins (for testing)
+
 app.get("/test-db", async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM users"); // Change "users" to your actual table name
