@@ -14,6 +14,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }, // Required for NeonDB
 });
 
+pool.connect()
+    .then(() => console.log("✅ Connected to Neon PostgreSQL Database"))
+    .catch(err => console.error("❌ Database Connection Error:", err));
+
 app.use(cors());
 app.use(express.json()); // Parse JSON requests
 
