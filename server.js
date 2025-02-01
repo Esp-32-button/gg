@@ -1,87 +1,115 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const { Pool } = require("pg");
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+require('dotenv').config();
 
 const app = express();
-const port = 3000;
+app.use(bodyParser.json());
+app.use(cors());
 
-// PostgreSQL connection
+// Database Connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // Required for NeonDB
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
-
 pool.connect()
     .then(() => console.log("✅ Connected to Neon PostgreSQL Database"))
     .catch(err => console.error("❌ Database Connection Error:", err));
 
-app.use(cors());
-app.use(express.json()); // Parse JSON requests
+const SECRET_KEY = '/cTFigjrKOOlRA7S1bI1Pxk809ZAN4gi5FJ3gmc4jKcQjfJST27NeZv6n8OJP6sU0+N7JJUAkc+DdsXwOIkQaw=='; // Use a secure key
 
-app.use(cors({ origin: "*" })); // Allow all origins (for testing)
-
-app.get("/test-db", async (req, res) => {
-    try {
-        const result = await pool.query("SELECT * FROM users"); // Change "users" to your actual table name
-        res.json(result.rows);
-    } catch (err) {
-        console.error("❌ Database Query Error:", err);
-        res.status(500).json({ error: "Database error" });
-    }
-});
-// User Registration
+// Routes
 app.post('/register', async (req, res) => {
+    const { email, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
     try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email and password are required." });
-        }
-
-        // Hash password and insert into Neon database
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const result = await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [email, hashedPassword]);
-
-        res.json({ message: "User registered successfully!" });
-    } catch (error) {
-        console.error("Register Error:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        await pool.query('INSERT INTO users (email, password) VALUES ($1, $2)', [email, hashedPassword]);
+        res.status(201).send({ message: 'User registered successfully' });
+    } catch (err) {
+        res.status(400).send({ error: 'Registration failed' });
     }
 });
 
-// User Login
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    if (result.rows.length === 0) return res.status(400).json({ error: "Invalid email or password" });
+app.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (!result.rows.length) return res.status(404).send({ error: 'User not found' });
 
-    const user = result.rows[0];
-    if (!(await bcrypt.compare(password, user.password))) return res.status(400).json({ error: "Invalid email or password" });
+        const user = result.rows[0];
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) return res.status(401).send({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token });
-  } catch (error) {
-    res.status(500).json({ error: "Error logging in" });
-  }
+        const token = jwt.sign({ userId: user.id }, SECRET_KEY);
+        res.status(200).send({ token });
+    } catch (err) {
+        res.status(400).send({ error: 'Login failed' });
+    }
 });
 
-// Middleware for authentication
-function authenticateToken(req, res, next) {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: "Forbidden" });
-    req.user = user;
-    next();
-  });
+
+/*app.post('/wifi', (req, res) => {
+    const { ssid, password } = req.body;
+
+    // Forward the request to the ESP32
+    const espUrl = `http://<ESP32-IP-Address>/change_wifi`;
+    fetch(espUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ ssid, password }),
+    })
+        .then((response) => response.text())
+        .then((data) => res.status(200).send({ message: data }))
+        .catch((error) => res.status(500).send({ error: 'Failed to update Wi-Fi credentials' }));
+});
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Extract token from "Bearer <token>"
+
+    if (!token) {
+        return res.status(401).json({ error: 'Access token is missing.' });
+    }
+
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Invalid or expired token.' });
+        }
+        req.user = user; // Add user data to request object
+        next(); // Pass control to the next middleware or route handler
+    });
 }
 
-// Servo Control (Protected Route)
+
+app.post('/change_wifi', authenticateToken, async (req, res) => {
+    const { ssid, password } = req.body;
+
+    if (!ssid || !password) {
+        return res.status(400).json({ error: 'SSID and Password are required.' });
+    }
+
+    try {
+        const response = await axios.post('http://<ESP32_IP_ADDRESS>/change_wifi', {
+            ssid,
+            password,
+        });
+
+        if (response.status === 200) {
+            res.json({ message: 'Wi-Fi information updated successfully.' });
+        } else {
+            res.status(500).json({ error: 'Failed to update Wi-Fi on the ESP32.' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Error communicating with ESP32.' });
+    }
+});*/
+
 let servoState = "OFF"; // Default state
 
 app.post("/servo", authenticateToken, (req, res) => {
@@ -100,3 +128,7 @@ app.get("/servo", (req, res) => {
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
