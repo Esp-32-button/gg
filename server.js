@@ -54,7 +54,7 @@ app.post('/login', async (req, res) => {
 
 
 
-/*app.post('/wifi', (req, res) => {
+app.post('/wifi', (req, res) => {
     const { ssid, password } = req.body;
 
     // Forward the request to the ESP32
@@ -108,7 +108,7 @@ app.post('/change_wifi', authenticateToken, async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Error communicating with ESP32.' });
     }
-});*/
+});
 
 let servoState = "OFF"; // Default state
 
